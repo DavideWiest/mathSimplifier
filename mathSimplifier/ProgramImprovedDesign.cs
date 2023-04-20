@@ -28,6 +28,16 @@ namespace mathSimplifierImprovedDesign
         }
     }
 
+    [Serializable]
+    class InvalidOperatorException : Exception
+    {
+        public InvalidOperatorException(string name)
+            : base(String.Format("Invalid term: {0}", name))
+        {
+
+        }
+    }
+
     public enum ops
     {
         PLUS, MINUS, MUL, DIV, EXP, NONE
@@ -37,19 +47,22 @@ namespace mathSimplifierImprovedDesign
     {
         static void Main(string[] args)
         {
-            string termStr = "2YX+2Y/(-3X/4)*-352/5*34+44";
-            //Console.Write("Expression to simplify: ");
+            //string termStr = "2YX^2+2Y/(-3X/4)^(X+2)*-352/5*34+44^3";
+            string termStr = "(X+2)^(-3X/4)";
+            //string termStr = "2YX^2+44^3+1";
+            //Console.Write("Expression to simplify: "); // TODO
             //string term = Console.ReadLine();
+            // string termStr = "2Y/(-3X/4)^2";
 
             printHandler.DebugMode = true;
             printHandler.InfoMode = true;
 
             string preparedString = mathParser.PrepareStrToBeParsed(termStr);
-            MultiExpression term = mathParser.ParseMultiExpression(termStr);
+            MultiExpression term = mathParser.ParseMultiExpression(preparedString);
             MultiExpression simplifiedTerm = mathSimplifier.Simplify(term);
 
             Console.WriteLine("Simplified Term:");
-            Console.WriteLine(simplifiedTerm.ToString());
+            Console.WriteLine(simplifiedTerm.ToStringSimplified());
         }
     }
 
@@ -79,6 +92,12 @@ namespace mathSimplifierImprovedDesign
         {
             return opsByChar[c];
         }
+
+        public static void assertAllAlphabetic(string input)
+        {
+            if (!Regex.IsMatch(input, @"^[a-zA-Z]+$") && input.Length > 0)
+                throw new InvalidExpressionException(input + " must be alphabetical (most likely a base)");
+        }
     }
 
     public static class mathNumAndOpProc
@@ -105,6 +124,14 @@ namespace mathSimplifierImprovedDesign
         public static bool IsThirdLevel(ops op)
         {
             return op == ops.EXP;
+        }
+
+        public static ops MergeFirstLevelOperators(ops op1, ops op2)
+        {
+            if ((op1 == ops.PLUS) != (op2 == ops.PLUS))
+                return ops.MINUS;
+            else
+                return ops.PLUS;
         }
     }
 
@@ -215,15 +242,16 @@ namespace mathSimplifierImprovedDesign
                         prevWasSubTerm = true;
                         continue;
                     }
-                    else if (MovingToThirdLevelOperation(prevOp, mathStrProc.CharToOp(c)) && prevOpChanged)
-                    {
-                        (exprs, i) = HandleExtractMultiExpressionThroughThirdLevelOperation(exprs, str, currentStr, i, prevOp);
+                    //else if (MovingToThirdLevelOperation(prevOp, mathStrProc.CharToOp(c)) && prevOpChanged)
+                    //{
+                    //    // prevOp is DIV here
+                    //    (exprs, i) = HandleExtractMultiExpressionThroughThirdLevelOperation(exprs, str, currentStr, i, prevOp);
 
-                        prevOp = mathStrProc.CharToOp(c);
-                        prevOpChanged = true;
-                        prevWasSubTerm = true;
-                        continue;
-                    }
+                    //    prevOp = mathStrProc.CharToOp(c);
+                    //    prevOpChanged = true;
+                    //    prevWasSubTerm = true;
+                    //    continue;
+                    //}
                     else if (prevWasSubTerm == false)
                     {
                         exprs = HandleExtractSingleExpression(exprs, currentStr, prevOp);
@@ -265,28 +293,28 @@ namespace mathSimplifierImprovedDesign
         {
             int endOfSubTermIndex = FindRespectiveClosingBracketIndex(str.Substring(i + 1), i);
             int skipToIndex = i + endOfSubTermIndex;
-            string mulitExprStr = str.Substring(i + 1, endOfSubTermIndex - 1);
+            string multiExprStr = str.Substring(i + 1, endOfSubTermIndex - 1);
 
-            printHandler.PrintDebugInfo("SubTerm (Braces)", $"{mulitExprStr}");
+            printHandler.PrintDebugInfo("SubTerm (Braces)", $"{multiExprStr}");
 
             ops optionalOperatorToCombineWith = ops.PLUS;
             if (i - 1 >= 0)
                 optionalOperatorToCombineWith = str[i - 1] == '-' ? ops.MINUS : ops.PLUS;
 
-            exprs = AppendMultiExpression(exprs, mulitExprStr, prevOp, optionalOperatorToCombineWith);
+            exprs = AppendMultiExpression(exprs, multiExprStr, prevOp, optionalOperatorToCombineWith);
 
-            return Tuple.Create(exprs, skipToIndex-1);
+            return Tuple.Create(exprs, skipToIndex);
         }
 
         private static Tuple<List<Expression>, int> HandleExtractMultiExpressionThroughSecondLevelOperation(List<Expression> exprs, string str, string currentStr, int i, ops prevOp)
         {
             int endOfSubTermIndex = FindEndOfMultiplicativeChain(str.Substring(i + 2)) + 1;
             int skipToIndex = i + endOfSubTermIndex;
-            string mulitExprStr = currentStr + str.Substring(i, endOfSubTermIndex + 1);
+            string multiExprStr = currentStr + str.Substring(i, endOfSubTermIndex + 1);
 
-            printHandler.PrintDebugInfo("SubTerm (SecondLevel)", $"{mulitExprStr}");
+            printHandler.PrintDebugInfo("SubTerm (SecondLevel)", $"{multiExprStr}");
 
-            exprs = AppendMultiExpression(exprs, mulitExprStr, prevOp, ops.PLUS);
+            exprs = AppendMultiExpression(exprs, multiExprStr, prevOp, ops.PLUS);
 
             return Tuple.Create(exprs, skipToIndex-1);
         }
@@ -295,11 +323,11 @@ namespace mathSimplifierImprovedDesign
         {
             int endOfSubTermIndex = findEndOfExponentialChain(str.Substring(i + 2)) + 1;
             int skipToIndex = i + endOfSubTermIndex;
-            string mulitExprStr = currentStr + str.Substring(i, endOfSubTermIndex + 1);
+            string multiExprStr = currentStr + str.Substring(i, endOfSubTermIndex + 1);
 
-            printHandler.PrintDebugInfo("SubTerm (ThirdLevel)", $"{mulitExprStr}");
+            printHandler.PrintDebugInfo("SubTerm (ThirdLevel)", $"{multiExprStr}");
 
-            exprs = AppendMultiExpression(exprs, mulitExprStr, prevOp, ops.PLUS);
+            exprs = AppendMultiExpression(exprs, multiExprStr, prevOp, ops.PLUS);
 
             return Tuple.Create(exprs, skipToIndex-1);
         }
@@ -316,11 +344,8 @@ namespace mathSimplifierImprovedDesign
 
         private static List<Expression> AppendMultiExpression(List<Expression> exprs, string exprStr, ops op, ops optionalOperatorToCombineWith)
         {
-            //if (op == ops.EXP)
-            //    throw new InvalidTermException("Operator of MultiExpression-String cannot be exponent.");
 
             MultiExpression term = ParseMultiExpression(PrepareStrToBeParsed(exprStr), op);
-            printHandler.PrintDebugInfo("Multiexpression (325)", term.ToString());
             MultiExpression simplifiedTerm = mathSimplifier.Simplify(term);
             simplifiedTerm = ExprManager.MergeExpressionWithOperator(simplifiedTerm, optionalOperatorToCombineWith);
             exprs.Add(simplifiedTerm);
@@ -336,7 +361,6 @@ namespace mathSimplifierImprovedDesign
 
         private static SingleExpression ParseSingleExpression(string exprStr, ops op)
         {
-            string mulBase = "";
             double numVal = 1.0;
             bool subPartIsNumeric = false;
             int separationIndex = exprStr.Length + 1;
@@ -350,7 +374,12 @@ namespace mathSimplifierImprovedDesign
                     break;
             }
 
-            mulBase = exprStr.Substring(separationIndex);
+            if (numVal == 0.0 && exprStr[0] != 0)
+            {
+                numVal = 1.0;
+            }
+
+            string mulBase = exprStr.Substring(separationIndex);
 
             SingleExpression expr = new SingleExpression(op, numVal, mulBase);
 
@@ -442,16 +471,30 @@ namespace mathSimplifierImprovedDesign
             }
             return Tuple.Create(str, prevOp);
         }
+
+
     }
 
     public static class mathSimplifier
     {
 
-        public static MultiExpression Simplify(MultiExpression input)
+        public static MultiExpression Simplify(MultiExpression mex)
+        {
+            mex = simplifyMultisIntoSinglesWherePossible(mex);
+            mex = SimplifyWithPreferredOperator(mex, new(mathNumAndOpProc.IsThirdLevel));
+            mex = SimplifyWithPreferredOperator(mex, new(mathNumAndOpProc.IsSecondLevel));
+            mex = SimplifyWithPreferredOperator(mex, new(mathNumAndOpProc.IsFirstLevel));
+            return mex;
+        }
+        
+
+        public static MultiExpression SimplifyWithPreferredOperator(MultiExpression input, Predicate<ops> isPreferredOp)
         {
             List<Expression> result = new();
             List<Expression> nextExpressionBatch = input.exprs;
             List<Expression> expressionsToSimplify = new();
+
+            printHandler.PrintDebugInfo($"Before simplification", (new MultiExpression(input.op, input.exprs)).ToString());
 
             do
             {
@@ -464,10 +507,16 @@ namespace mathSimplifierImprovedDesign
                 for (int i = 1; i < expressionsToSimplify.Count; i++)
                 {
                     Expression expr2 = expressionsToSimplify[i];
-                    if (combinerChecker.CanCombine(currentSimplifierExpression, expr2))
+                    if (combinerChecker.CanCombine(currentSimplifierExpression, expr2) && isPreferredOp(expr2.op) && i < 2)
                     {
-                        currentSimplifierExpression = new MultiExpression(currentSimplifierExpression.op, Combiner.Combine(currentSimplifierExpression, expr2));
+                        List<Expression> combinedExprs = Combiner.Combine(currentSimplifierExpression, expr2);
+                        if (combinedExprs.Count == 1)
+                            currentSimplifierExpression = combinedExprs[0];
+                        else
+                            currentSimplifierExpression = new MultiExpression(currentSimplifierExpression.op, combinedExprs);
                         printHandler.PrintInfo($"Simplification step", currentSimplifierExpression.ToString());
+                        expressionsToSimplify.RemoveAt(i);
+                        i--;
                     }
                     else
                     {
@@ -475,17 +524,38 @@ namespace mathSimplifierImprovedDesign
                     }
                 }
 
+                
+
+
+                printHandler.PrintDebugInfo($"Added to result", currentSimplifierExpression.ToString());
                 result.Add(currentSimplifierExpression);
             }
             while (nextExpressionBatch.Count != 0);
 
-            return new MultiExpression(input.op, result);
-        }
-        
+            MultiExpression resultingMex = new MultiExpression(input.op, result);
 
-        public static MultiExpression SimplifyWithPreferredOperator(MultiExpression input, ops op)
+            resultingMex = simplifyMultisIntoSinglesWherePossible(resultingMex);
+
+            return resultingMex;
+        }
+
+        public static MultiExpression simplifyMultisIntoSinglesWherePossible(MultiExpression mex)
         {
-            return input;
+            foreach(int i in Enumerable.Range(0, mex.exprs.Count)) {
+                if (mex.exprs[i] is MultiExpression)
+                {
+                    if ((mex.exprs[i] as MultiExpression).exprs.Count == 1)
+                    {
+                        Expression innerEx = (mex.exprs[i] as MultiExpression).exprs[0];
+                        mex.exprs[i] = ExprManager.MergeBracesOperatorsToInnerExpr(mex.exprs[i].op, innerEx);
+                    }
+                    else
+                    {
+                        mex.exprs[i] = simplifyMultisIntoSinglesWherePossible(mex.exprs[i] as MultiExpression);
+                    }
+                }
+            }
+            return mex;
         }
 
 
@@ -713,22 +783,31 @@ namespace mathSimplifierImprovedDesign
 
         public static List<Expression> Mul(SingleExpression sex1, SingleExpression sex2)
         {
+            if (sex1.op == ops.DIV && sex2.op == ops.MUL)
+                return Div(sex1, sex2);
+
             sex1.numVal *= sex2.numVal;
             sex1.mulBase += sex2.mulBase;
             sex1.divBase += sex2.divBase;
+            sex1.op = mathNumAndOpProc.MergeFirstLevelOperators(sex1.op, sex2.op);
             return new List<Expression> { sex1 };
         }
 
         public static List<Expression> Div(SingleExpression sex1, SingleExpression sex2)
         {
-            sex1.numVal -= sex2.numVal;
+            if (sex1.op == ops.DIV && sex2.op == ops.DIV)
+                return Mul(sex1, sex2);
+
+            sex1.numVal /= sex2.numVal;
             sex1.mulBase += sex2.divBase;
             sex1.divBase += sex2.mulBase;
+            sex1.op = mathNumAndOpProc.MergeFirstLevelOperators(sex1.op, sex2.op);
             return new List<Expression> { sex1 };
         }
 
         public static List<Expression> Exp(SingleExpression sex1, SingleExpression sex2)
         {
+            Console.WriteLine($"exp operation {sex1} {sex2}");
             sex1 = moveBasesToExponentAttributes(sex1, sex2);
 
             if (sex1.expMulBase == "" && sex1.expDivBase == "" && sex2.numVal % 1 == 0 && sex2.numVal >= 0)
@@ -799,7 +878,7 @@ namespace mathSimplifierImprovedDesign
 
         public static List<Expression> PlusMinus(SingleExpression sex, MultiExpression mex, bool switchInputOrder)
         {
-            List<Expression> result = new List<Expression> { sex };
+            List<Expression> result = new List<Expression>();
             foreach (Expression expr in mex.exprs)
             {
                 result.Add(ExprManager.MergeExpressionWithOperator(expr, mex.op));
@@ -829,26 +908,58 @@ namespace mathSimplifierImprovedDesign
 
         public static List<Expression> Exp(SingleExpression sex, MultiExpression mex, bool switchInputOrder)
         {
-            List<Expression> result = new List<Expression>() { sex };
+            List<Expression> result = new List<Expression>();
             
-            if (!switchInputOrder)
+            if (switchInputOrder)
             {
                 foreach (Expression expr in mex.exprs)
                 {
                     ops prevOp = expr.op;
                     expr.op = mex.op;
 
+                    Expression? expr3 = null;
+                    //if (prevOp == ops.DIV)
+                    //{
+                    //    prevOp = ops.MUL;
+                    //    if (expr is SingleExpression)
+                    //    {
+                    //        SingleExpression expr2 = expr as SingleExpression;
+                    //        expr2.numVal *= -1;
+                    //        expr3 = expr2;
+                    //    } else
+                    //    {
+                    //        MultiExpression expr2 = expr as MultiExpression;
+                    //        expr2 = ExprManager.MergeExpressionWithOperator(expr2, ops.MINUS);
+                    //        expr3 = expr2;
+                    //    }
+                    //}
+
+                    if (expr3 == null)
+                        expr3 = expr;
+
+                    
+
                     if (expr is SingleExpression)
-                        result.Add(ExprManager.MergeExpressionWithOperator(Combiner.Combine(sex, expr)[0] as SingleExpression, ExprManager.DetermineHigherLevelOperator(prevOp)));
+                        result.Add(ExprManager.MergeExpressionWithOperator(Combiner.Combine(sex, expr3)[0] as SingleExpression, ExprManager.DetermineHigherLevelOperator(prevOp)));
                     else
-                        result.Add(ExprManager.MergeExpressionWithOperator(new MultiExpression(sex.op, Combiner.Combine(sex, expr)), ExprManager.DetermineHigherLevelOperator(prevOp)));
+                        result.Add(ExprManager.MergeExpressionWithOperator(new MultiExpression(sex.op, Combiner.Combine(sex, expr3)), ExprManager.DetermineHigherLevelOperator(prevOp)));
                      // is sex.op correct ?
                 }
             }
             else
             {
-                result.Add(mex);
-                result.Add(sex);
+
+                ops prevOp = sex.op;
+                foreach (Expression expr in ExprManager.SplitMultiExpressionAtFirstLevelOperatorsAndMoveToHigherLevelOperator(mex.exprs))
+                {
+                    SingleExpression sex2 = new SingleExpression(sex);
+                    sex2.op = expr.op;
+                    expr.op = ops.EXP;
+                    result.Add(sex2);
+                    result.Add(expr);
+                }
+
+                result[0].op = prevOp;
             }
 
             return result;
@@ -1000,12 +1111,72 @@ namespace mathSimplifierImprovedDesign
                 case ops.MUL:
                     return ops.EXP;
                 case ops.DIV:
-                    throw new NotImplementedException("Divisors not allowed in exponent"); // optional TODO: implement this: implement square root field
+                    throw new InvalidOperatorException("Divisors not allowed in exponent"); // optional TODO: implement this: implement square root field
                 case ops.EXP:
                     return op; // TODO
                 default:
                     throw new NotImplementedException("Unknown Operator");
             }
+        }
+
+        public static Expression MergeBracesOperatorsToInnerExpr(ops opOuter, Expression innerExpr)
+        {
+            ops resultingOp;
+            if (mathNumAndOpProc.IsFirstLevel(opOuter))
+            {
+                if (mathNumAndOpProc.IsFirstLevel(innerExpr.op))
+                {
+                    resultingOp = mathNumAndOpProc.MergeFirstLevelOperators(opOuter, innerExpr.op);
+                }
+                else
+                {
+                    resultingOp = opOuter;
+                }
+            }
+            else
+            {
+                resultingOp = opOuter;
+                innerExpr = MergeExpressionWithOperator(innerExpr, opOuter);
+            }
+            innerExpr.op = resultingOp;
+            return innerExpr;
+        }
+
+        public static List<Expression> SplitMultiExpressionAtFirstLevelOperatorsAndMoveToHigherLevelOperator(List<Expression> exprs)
+        {
+            List<Expression> result = new();
+            List<Expression> currentMexExprs = new();
+            ops currentFirstLevelOp = mathNumAndOpProc.IsFirstLevel(exprs[0].op) ? DetermineHigherLevelOperator(exprs[0].op) : ops.MUL;
+
+            foreach(Expression expr in exprs)
+            {
+                if (mathNumAndOpProc.IsFirstLevel(expr.op))
+                {
+                    if (currentMexExprs.Count > 0)
+                    {
+                        List<Expression> currentMexExprsToAppend = new List<Expression>(currentMexExprs);
+                        MultiExpression ah = new MultiExpression(currentFirstLevelOp, currentMexExprsToAppend);
+                        result.Add(new MultiExpression(currentFirstLevelOp, currentMexExprsToAppend));
+                    }
+
+                    currentMexExprs.Clear();
+                    currentFirstLevelOp = DetermineHigherLevelOperator(expr.op);
+
+                    currentMexExprs.Add(expr);
+                } else
+                {
+                    currentMexExprs.Add(expr);
+                }
+            }
+
+            if (currentMexExprs.Count > 0)
+            {
+                List<Expression> currentMexExprsToAppend = new List<Expression>(currentMexExprs);
+                MultiExpression ah = new MultiExpression(currentFirstLevelOp, currentMexExprsToAppend);
+                result.Add(new MultiExpression(currentFirstLevelOp, currentMexExprsToAppend));
+            }
+
+            return result;
         }
     }
 
@@ -1039,6 +1210,24 @@ namespace mathSimplifierImprovedDesign
 
             return $"{mathStrProc.OpToChar(op)}({str})";
         }
+
+        public string ToStringSimplified()
+        {
+            string str = "";
+            if (exprs.Count == 1)
+            {
+                if (exprs[0] is SingleExpression)
+                    return exprs[0].ToString();
+                else
+                    return (exprs[0] as MultiExpression).ToStringSimplified();
+            }
+            foreach (var e in exprs)
+            {
+                str += e.ToString();
+            }
+
+            return str;
+        }
     }
 
     public class SingleExpression : Expression
@@ -1071,6 +1260,7 @@ namespace mathSimplifierImprovedDesign
             {
                 _mulbase = String.Concat(value.OrderBy(c => c));
                 CancelOutSecondLevelBases();
+                mathStrProc.assertAllAlphabetic(_mulbase);
             }
         }
         public string _divbase = "";
@@ -1081,6 +1271,7 @@ namespace mathSimplifierImprovedDesign
             {
                 _divbase = String.Concat(value.OrderBy(c => c));
                 CancelOutSecondLevelBases();
+                mathStrProc.assertAllAlphabetic(_divbase);
             }
         }
         public string _expmulbase = "";
@@ -1091,6 +1282,7 @@ namespace mathSimplifierImprovedDesign
             {
                 _expmulbase = String.Concat(value.OrderBy(c => c));
                 CancelOutThirdLevelBases();
+                mathStrProc.assertAllAlphabetic(_expmulbase);
             }
         }
         public string _expdivbase = "";
@@ -1101,6 +1293,7 @@ namespace mathSimplifierImprovedDesign
             {
                 _expdivbase = String.Concat(value.OrderBy(c => c));
                 CancelOutThirdLevelBases();
+                mathStrProc.assertAllAlphabetic(_expdivbase);
             }
         }
 
@@ -1168,12 +1361,12 @@ namespace mathSimplifierImprovedDesign
 
         public SingleExpression(SingleExpression sex) : base(sex.op)
         {
-            numVal = sex.numVal;
-            mulBase = sex.mulBase;
-            divBase = sex.divBase;
-            expNumVal = sex.expNumVal;
-            expMulBase = sex.expMulBase;
-            expDivBase = sex.expDivBase;
+            _numval = sex._numval;
+            _mulbase = sex._mulbase;
+            _divbase = sex._divbase;
+            _expnumval = sex._expnumval;
+            _expmulbase = sex._expmulbase;
+            _expdivbase = sex._expdivbase;
         }
 
 
@@ -1185,17 +1378,19 @@ namespace mathSimplifierImprovedDesign
             string expOptionalOpenBrace = "";
             string expBaseStr = "";
 
+            string mulBaseStr = simplifyRepeatingBasesWithExponents(mulBase);
+
             if (numVal != 1.0 || mulBase == "")
                 numValStr = $"{numVal}";
             
             if (divBase.Length != 0)
-                divBaseStr += $"/{divBase}";
+                divBaseStr += $"/{simplifyRepeatingBasesWithExponents(divBase)}";
             
             if (expNumVal != 1.0)
                 expBaseStr += expNumVal.ToString();
             
             if (expMulBase.Length != 0)
-                expBaseStr += expMulBase;
+                expBaseStr += simplifyRepeatingBasesWithExponents(expMulBase);
 
             if (expDivBase.Length != 0)
             {
@@ -1203,7 +1398,7 @@ namespace mathSimplifierImprovedDesign
                     expBaseStr += "1";
 
                 expBaseStr += "/";
-                expBaseStr += expDivBase;
+                expBaseStr += simplifyRepeatingBasesWithExponents(expDivBase);
             }
             if (expBaseStr.Length != 0)
             {
@@ -1211,26 +1406,22 @@ namespace mathSimplifierImprovedDesign
                 expBaseStr = "(" + expBaseStr + ")";
             }
 
-            return $"{mathStrProc.OpToChar(op)}{expOptionalOpenBrace}{numValStr}{mulBase}{divBaseStr}{expBaseStr}";
+            return $"{mathStrProc.OpToChar(op)}{expOptionalOpenBrace}{numValStr}{mulBaseStr}{divBaseStr}{expBaseStr}";
+        }
+
+        public string simplifyRepeatingBasesWithExponents(string str)
+        {
+            string resultingStr = "";
+            string uniqueCharStr = new String(str.Distinct().ToArray());
+
+            foreach(char c in uniqueCharStr)
+            {
+                int occs = str.Count(allc => allc == c);
+                resultingStr += occs == 1 ? c : "(" + c + $"^{occs})";
+            }
+            return resultingStr;
         }
 
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }
